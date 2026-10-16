@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>色覚シミュレーション AR検証</title>
 <style>
+/* ============================================
+   【担当:UI/UXデザイン(メンバーB)】
+   画面の見た目・配置・配色はこのstyleタグの中で調整できます。
+   変数(--bg, --accent など)を変えると全体の配色が一括で変わります。
+   ============================================ */
 :root{
   --bg:#0f1115; --surface:#1b1e26; --text:#f2f3f5; --sub:#9aa0ab;
   --accent:#4f8cff; --accent-text:#ffffff; --border:#2a2e38;
@@ -68,6 +73,12 @@ footer{padding:10px 16px 20px; font-size:11px; color:var(--sub); text-align:cent
 </head>
 <body>
 
+<!-- ============================================
+     【担当:UI/UXデザイン(メンバーB)】
+     ここから下のHTML(画面の各パーツ)を編集・追加してください。
+     例:操作ガイドの表示、ビフォーアフター比較ボタンなど
+     ============================================ -->
+
 <header>
   <h1>色覚シミュレーション AR検証(PoC)</h1>
   <p class="sub">カメラ映像にリアルタイムで色覚変換をかける技術検証</p>
@@ -94,7 +105,25 @@ footer{padding:10px 16px 20px; font-size:11px; color:var(--sub); text-align:cent
   ※ Vienot/Brettel法ベースの近似行列によるシミュレーションです。実際の見え方を完全に再現するものではありません。
 </footer>
 
+<!-- ============================================
+     【担当:データ・検証機能(メンバーC)】
+     体験後のアンケートボタンや「感想を送る」フォームへの
+     リンクなどは、ここ(footerの下)に追加するのがおすすめです。
+     例:<button id="feedbackBtn">体験後アンケートに答える</button>
+     ============================================ -->
+
 <script>
+/* ============================================
+   このscriptタグ内の担当エリアマップ
+   - MATRICES / シェーダー / render() 関連
+     → 【担当:シミュレーションエンジン(あなた)】
+   - startCamera() 内の画面切り替え部分、モード切り替えボタンの処理
+     → 【担当:UI/UXデザイン(メンバーB)】と要相談・共同で調整
+   - 新しくアンケート送信や記録用の関数を足す場合
+     → 【担当:データ・検証機能(メンバーC)】はこのファイルの一番下に
+       新しい関数として追加してください(既存の関数は極力触らない)
+   ============================================ */
+
 const startBtn = document.getElementById('startBtn');
 const startWrap = document.getElementById('startWrap');
 const stage = document.getElementById('stage');
@@ -106,6 +135,12 @@ const canvas = document.getElementById('glcanvas');
 let gl, program, texture, currentMode = 0;
 const modeLabels = ['通常の見え方','1型(P型)として見た場合','2型(D型)として見た場合','3型(T型)として見た場合'];
 
+// ============================================
+// 【担当:シミュレーションエンジン(あなた)】
+// ここから下、render()関数までが色変換のロジック部分です。
+// 精度を上げる場合は、主にこのMATRICES配列と、
+// 下のfsSource(フラグメントシェーダー)を編集します。
+// ============================================
 // 色覚シミュレーション用 3x3 行列(Vienot et al. 近似、sRGB直接近似版)
 const MATRICES = [
   // 通常(恒等行列)
@@ -204,7 +239,16 @@ function render(){
   }
   requestAnimationFrame(render);
 }
+// ============================================
+// 【担当:シミュレーションエンジン(あなた)】ここまで
+// ============================================
 
+// ============================================
+// 【担当:UI/UXデザイン(メンバーB)】
+// ここから下、画面遷移・ボタン操作まわりです。
+// ビフォーアフター比較や操作ガイドの表示切り替えなどは
+// この中に処理を追加していく想定です。
+// ============================================
 async function startCamera(){
   try{
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -237,6 +281,15 @@ document.querySelectorAll('button.mode').forEach(btn=>{
     statusEl.textContent = modeLabels[currentMode];
   });
 });
+
+// ============================================
+// 【担当:データ・検証機能(メンバーC)】
+// アンケート送信・体験ログ記録などの新しい関数は
+// このコメントより下に追加してください。
+// 例:
+// function sendFeedback(answers){ ... }
+// ============================================
+
 </script>
 </body>
 </html>
