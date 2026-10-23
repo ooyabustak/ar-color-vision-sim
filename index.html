@@ -63,6 +63,13 @@ button.mode{
 button.mode.active{
   background:var(--accent); color:var(--accent-text); border-color:var(--accent);
 }
+.severity-wrap{
+  width:100%; max-width:480px; padding:4px 16px 2px;
+  display:flex; align-items:center; gap:10px;
+}
+.severity-wrap label{font-size:12px; color:var(--sub); white-space:nowrap;}
+.severity-wrap input[type="range"]{flex:1; accent-color:var(--accent);}
+.severity-wrap .val{font-size:12px; color:var(--text); width:34px; text-align:right;}
 .start-wrap{padding:16px;}
 #startBtn{
   padding:12px 24px; font-size:14px; border-radius:10px; border:none;
@@ -101,6 +108,12 @@ footer{padding:10px 16px 20px; font-size:11px; color:var(--sub); text-align:cent
   <button class="mode" data-mode="3">3型(T)</button>
 </div>
 
+<div class="severity-wrap" id="severityWrap" style="display:none;">
+  <label for="severitySlider">度合い</label>
+  <input type="range" id="severitySlider" min="0" max="100" value="100">
+  <span class="val" id="severityVal">100%</span>
+</div>
+
 <footer>
   ※ Vienot/Brettel法ベースの近似行列によるシミュレーションです。実際の見え方を完全に再現するものではありません。
 </footer>
@@ -133,6 +146,10 @@ const video = document.getElementById('video');
 const canvas = document.getElementById('glcanvas');
 
 let gl, program, texture, currentMode = 0;
+let severity = 1.0; // [追加] 0.0(通常)〜1.0(完全な2色覚)
+const severityWrap = document.getElementById('severityWrap');
+const severitySlider = document.getElementById('severitySlider');
+const severityVal = document.getElementById('severityVal');
 const modeLabels = ['通常の見え方','1型(P型)として見た場合','2型(D型)として見た場合','3型(T型)として見た場合'];
 
 // ============================================
@@ -141,17 +158,39 @@ const modeLabels = ['通常の見え方','1型(P型)として見た場合','2型
 // 精度を上げる場合は、主にこのMATRICES配列と、
 // 下のfsSource(フラグメントシェーダー)を編集します。
 // ============================================
-// 色覚シミュレーション用 3x3 行列(Vienot et al. 近似、sRGB直接近似版)
+// 色覚シミュレーション用 3x3 行列
+// [変更] Vienot近似(sRGB直接適用)→ Machado, Oliveira, Fonseca (2009)の行列に変更。
+// 理由:1) 3型(tritanopia)の精度が従来法より高い
+//      2) Color Oracleなど実際の色覚シミュレーションツールでも採用されている実績のある手法
+// この行列は「リニアRGB空間」に適用する前提の値です(下のfsSource側でsRGB⇔リニア変換を追加)。
 const MATRICES = [
   // 通常(恒等行列)
   [1,0,0, 0,1,0, 0,0,1],
-  // 1型 protanopia
-  [0.56667,0.43333,0, 0.55833,0.44167,0, 0,0.24167,0.75833],
-  // 2型 deuteranopia
-  [0.625,0.375,0, 0.70,0.30,0, 0,0.30,0.70],
-  // 3型 tritanopia
-  [0.95,0.05,0, 0,0.43333,0.56667, 0,0.475,0.525]
+  // 1型 protanopia(Machado et al. 2009, severity=1.0 = 完全な2色覚)
+  // ※WebGLは行列を「列優先」で読むため、数値は数学的な行列を列ごとに並べ替えてあります
+  [0.152286,0.114503,-0.003882, 1.052583,0.786281,-0.048116, -0.204868,0.099216,1.051998],
+  // 2型 deuteranopia(Machado et al. 2009, severity=1.0)
+  [0.367322,0.280085,-0.011820, 0.860646,0.672501,0.042940, -0.227968,0.047413,0.968881],
+  // 3型 tritanopia(Machado et al. 2009, severity=1.0)
+  [1.255528,-0.078411,0.004733, -0.076749,0.930809,0.691367, -0.178779,0.147602,0.303900]
 ];
+const IDENTITY = [1,0,0, 0,1,0, 0,0,1];
+
+// [追加] severity(軽度〜重度)対応
+// Machado論文の考え方:severity=0は「恒等行列(通常の見え方)」、severity=1は「完全な2色覚(今までのMATRICES)」。
+// この間は恒等行列と完全2色覚行列を「線形補間」すれば、中間の異常3色覚(色弱)に近い見え方を近似できる。
+// 医学的に完全に正確な補間ではないが、Machado論文自体もこの補間方式を採用している近似手法。
+function lerpMatrix(matA, matB, t){
+  const out = new Array(9);
+  for(let i=0;i<9;i++){
+    out[i] = matA[i] + (matB[i]-matA[i]) * t;
+  }
+  return out;
+}
+function getMatrixForMode(mode, severity){
+  if(mode === 0) return IDENTITY;
+  return lerpMatrix(IDENTITY, MATRICES[mode], severity);
+}
 
 const vsSource = `
   attribute vec2 a_pos;
@@ -167,10 +206,52 @@ const fsSource = `
   varying vec2 v_uv;
   uniform sampler2D u_tex;
   uniform mat3 u_mat;
+
+  // [追加] sRGB → リニアRGB変換
+  // カメラ映像の色はsRGB(ガンマ補正済み)なので、物理的に正しい色混合計算をするには
+  // 一度ガンマを外した「リニア」な値に戻す必要がある
+  vec3 srgbToLinear(vec3 c){
+    vec3 lo = c / 12.92;
+    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
+    bvec3 cutoff = lessThanEqual(c, vec3(0.04045));
+    return mix(hi, lo, vec3(cutoff));
+  }
+  // [追加] リニアRGB → sRGB変換(画面表示用に戻す)
+  // ※ここでは0〜1へのclampをしない(範囲外の値はsoftClip側でなめらかに圧縮するため)
+  vec3 linearToSrgb(vec3 c){
+    vec3 lo = c * 12.92;
+    vec3 hi = 1.055 * pow(max(c, 0.0), vec3(1.0/2.4)) - 0.055;
+    bvec3 cutoff = lessThanEqual(c, vec3(0.0031308));
+    return mix(hi, lo, vec3(cutoff));
+  }
+
+  // [追加] ソフトクリップ
+  // 行列変換(特に鮮やかな色)の結果が0〜1の範囲をはみ出すと、
+  // 単純なclampでは「階調が潰れて不自然に見える」問題が起きる。
+  // そこで0〜1に近いところはそのまま、範囲外に近づくほどなだらかに1(または0)へ収束させる。
+  float softClipChannel(float x){
+    // 下側(マイナス方向)のなだらかな圧縮
+    if(x < 0.0){
+      return 0.25 * x / (1.0 - x); // x=0付近でほぼ0、マイナスに大きいほど0に近づきつつ滑らかに接近
+    }
+    // 上側(1超え)のなだらかな圧縮
+    if(x > 1.0){
+      float over = x - 1.0;
+      return 1.0 - 0.25 * (1.0 - 1.0/(1.0+over));
+    }
+    return x;
+  }
+  vec3 softClip(vec3 c){
+    return clamp(vec3(softClipChannel(c.r), softClipChannel(c.g), softClipChannel(c.b)), 0.0, 1.0);
+  }
+
   void main(){
     vec4 c = texture2D(u_tex, v_uv);
-    vec3 transformed = u_mat * c.rgb;
-    gl_FragColor = vec4(transformed, c.a);
+    vec3 linear = srgbToLinear(c.rgb);       // [変更] 直接sRGBに行列をかけず、まずリニアに変換
+    vec3 transformedLinear = u_mat * linear; // リニア空間で色覚変換の行列を適用
+    vec3 srgbResult = linearToSrgb(transformedLinear); // 画面表示用にsRGBへ戻す(まだ範囲外の可能性あり)
+    vec3 result = softClip(srgbResult);      // [追加] 範囲外の値をなめらかに圧縮
+    gl_FragColor = vec4(result, c.a);
   }
 `;
 
@@ -233,7 +314,8 @@ function render(){
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
 
     const matLoc = gl.getUniformLocation(program, 'u_mat');
-    gl.uniformMatrix3fv(matLoc, false, new Float32Array(MATRICES[currentMode]));
+    // [変更] 固定のMATRICES[currentMode]ではなく、severityで補間した行列を使う
+    gl.uniformMatrix3fv(matLoc, false, new Float32Array(getMatrixForMode(currentMode, severity)));
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
@@ -279,7 +361,16 @@ document.querySelectorAll('button.mode').forEach(btn=>{
     btn.classList.add('active');
     currentMode = parseInt(btn.dataset.mode,10);
     statusEl.textContent = modeLabels[currentMode];
+    // [追加] 通常モード(0)の時はseverityスライダーを隠す、それ以外は表示
+    severityWrap.style.display = (currentMode === 0) ? 'none' : 'flex';
   });
+});
+
+// [追加] severityスライダーの操作
+severitySlider.addEventListener('input', ()=>{
+  const percent = parseInt(severitySlider.value, 10);
+  severity = percent / 100;
+  severityVal.textContent = percent + '%';
 });
 
 // ============================================
