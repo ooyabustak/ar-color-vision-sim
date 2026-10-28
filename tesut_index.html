@@ -64,12 +64,49 @@ button.mode.active{
   background:var(--accent); color:var(--accent-text); border-color:var(--accent);
 }
 .severity-wrap{
-  width:100%; max-width:480px; padding:4px 16px 2px;
-  display:flex; align-items:center; gap:10px;
+  width:100%; max-width:480px; padding:8px 16px 6px;
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
 }
-.severity-wrap label{font-size:12px; color:var(--sub); white-space:nowrap;}
-.severity-wrap input[type="range"]{flex:1; accent-color:var(--accent);}
-.severity-wrap .val{font-size:12px; color:var(--text); width:34px; text-align:right;}
+.severity-wrap label{font-size:14px; color:var(--sub); white-space:nowrap;}
+.severity-wrap .val{
+  font-size:20px; font-weight:700; color:var(--text);
+  width:64px; text-align:right; font-variant-numeric:tabular-nums;
+}
+
+/* スライダー本体:タップ領域を高さ48pxに拡大 */
+.severity-wrap input[type="range"]{
+  flex:1; min-width:0; height:48px; margin:0;
+  -webkit-appearance:none; appearance:none; background:transparent;
+  touch-action:pan-y;
+}
+/* バー */
+.severity-wrap input[type="range"]::-webkit-slider-runnable-track{
+  height:14px; border-radius:7px; background:var(--border);
+}
+.severity-wrap input[type="range"]::-moz-range-track{
+  height:14px; border-radius:7px; background:var(--border);
+}
+/* つまみ */
+.severity-wrap input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:44px; height:44px; margin-top:-15px;
+  border-radius:50%; background:var(--accent);
+  border:4px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
+.severity-wrap input[type="range"]::-moz-range-thumb{
+  width:44px; height:44px; border-radius:50%; background:var(--accent);
+  border:4px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
+
+/* プリセットボタン */
+.presets{
+  width:100%; display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
+}
+button.preset{
+  padding:12px 0; font-size:14px; border-radius:10px;
+  border:1px solid var(--border); background:var(--surface);
+  color:var(--text); cursor:pointer;
+}
+button.preset:active{background:var(--accent); color:var(--accent-text);}
 .start-wrap{padding:16px;}
 #startBtn{
   padding:12px 24px; font-size:14px; border-radius:10px; border:none;
