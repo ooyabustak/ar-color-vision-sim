@@ -38,6 +38,8 @@ body{
 header{
   width:100%; max-width:480px; padding:14px 16px; text-align:center;
 }
+.title-row{display:flex; align-items:center; gap:8px;}
+.title-row h1{flex:1;}
 h1{font-size:15px; font-weight:600; margin:0 0 2px;}
 p.sub{font-size:12px; color:var(--sub); margin:0;}
 .stage{
@@ -52,13 +54,15 @@ canvas{width:100%; height:100%; display:block; object-fit:cover;}
   padding:6px 10px; border-radius:8px; text-align:center;
 }
 .capture{
-  position:absolute; right:10px; bottom:10px;
-  width:40px; height:40px; display:grid; place-items:center;
-  border:0; border-radius:8px; background:rgba(0,0,0,.5); color:#fff;
+  flex:0 0 36px; width:36px; height:36px;
+  display:grid; place-items:center;
+  border:1px solid var(--border); border-radius:8px;
+  background:var(--surface); color:var(--sub);
   cursor:pointer;
 }
-.capture svg{width:22px; height:22px; display:block;}
+.capture svg{width:20px; height:20px; display:block;}
 .capture:focus-visible{outline:2px solid #fff; outline-offset:2px;}
+.capture:disabled{opacity:.55; cursor:not-allowed;}
 .controls{
   width:100%; max-width:480px; padding:14px 16px;
   display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
@@ -132,7 +136,15 @@ footer{padding:10px 16px 20px; font-size:11px; color:var(--sub); text-align:cent
      ============================================ -->
 
 <header>
-  <h1>色覚シミュレーション AR検証(PoC)</h1>
+  <div class="title-row">
+    <h1>色覚シミュレーション AR検証(PoC)</h1>
+    <button class="capture" id="captureBtn" type="button" aria-label="現在の映像を撮影" title="カメラ起動後に撮影できます" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 7h3l1.5-2h7L17 7h3v12H4z"/>
+        <circle cx="12" cy="13" r="3.5"/>
+      </svg>
+    </button>
+  </div>
   <p class="sub">カメラ映像にリアルタイムで色覚変換をかける技術検証</p>
 </header>
 
@@ -144,12 +156,6 @@ footer{padding:10px 16px 20px; font-size:11px; color:var(--sub); text-align:cent
   <video id="video" playsinline autoplay muted></video>
   <canvas id="glcanvas"></canvas>
   <div class="status" id="status">通常の見え方</div>
-  <button class="capture" id="captureBtn" type="button" aria-label="現在の映像を撮影" title="現在の映像を撮影">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M4 7h3l1.5-2h7L17 7h3v12H4z"/>
-      <circle cx="12" cy="13" r="3.5"/>
-    </svg>
-  </button>
 </div>
 
 <div class="controls" id="controls" style="display:none;">
@@ -404,6 +410,8 @@ async function startCamera(){
     controls.style.display = 'grid';
 
     if(initGL()){
+      captureBtn.disabled = false;
+      captureBtn.title = '現在の映像を撮影';
       requestAnimationFrame(render);
     }
   }catch(err){
