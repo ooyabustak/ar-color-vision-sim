@@ -33,8 +33,18 @@ body{
   display:flex; flex-direction:column; align-items:center;
 }
 header{width:100%; max-width:480px; padding:14px 16px; text-align:center;}
+.title-row{display:flex; align-items:center; gap:8px;}
+.title-row h1{flex:1; min-width:0;}
 h1{font-size:15px; font-weight:600; margin:0 0 2px;}
 p.sub{font-size:12px; color:var(--sub); margin:0;}
+.capture{
+  flex:0 0 40px; width:40px; height:40px; display:grid; place-items:center;
+  border:1px solid var(--border); border-radius:8px;
+  background:var(--surface); color:var(--text); cursor:pointer;
+}
+.capture svg{width:22px; height:22px; display:block;}
+.capture:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.capture:disabled{opacity:.7; cursor:not-allowed;}
 .stage{
   position:relative; width:100%; max-width:480px; aspect-ratio:3/4;
   background:#000; overflow:hidden; border-radius:12px;
@@ -110,7 +120,15 @@ footer{padding:10px 16px 20px; font-size:11px; color:var(--sub); text-align:cent
 <!-- 【担当:UI/UXデザイン(メンバーB)】画面の各パーツ -->
 
 <header>
-  <h1>色覚シミュレーション AR検証(PoC)</h1>
+  <div class="title-row">
+    <h1>色覚シミュレーション AR検証(PoC)</h1>
+    <button class="capture" id="captureBtn" type="button" aria-label="現在の映像を撮影" title="カメラ起動後に撮影できます" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 7h3l1.5-2h7L17 7h3v12H4z"/>
+        <circle cx="12" cy="13" r="3.5"/>
+      </svg>
+    </button>
+  </div>
   <p class="sub">カメラ映像にリアルタイムで色覚変換をかける技術検証</p>
 </header>
 
@@ -166,6 +184,7 @@ const controls = document.getElementById('controls');
 const statusEl = document.getElementById('status');
 const video = document.getElementById('video');
 const canvas = document.getElementById('glcanvas');
+const captureBtn = document.getElementById('captureBtn');
 
 let gl, program, texture, currentMode = 0;
 let severity = 1.0; // 0.0(通常)〜1.0(完全な2色覚)
@@ -250,7 +269,8 @@ function compileShader(type, src){
 }
 
 function initGL(){
-  gl = canvas.getContext('webgl', {antialias:false}) || canvas.getContext('experimental-webgl');
+  const contextOptions = {antialias:false, preserveDrawingBuffer:true};
+  gl = canvas.getContext('webgl', contextOptions) || canvas.getContext('experimental-webgl', contextOptions);
   if(!gl){ statusEl.textContent = 'このブラウザはWebGLに対応していません'; return false; }
 
   const vs = compileShader(gl.VERTEX_SHADER, vsSource);
@@ -326,6 +346,8 @@ async function startCamera(){
     controls.style.display = 'grid';
 
     if(initGL()){
+      captureBtn.disabled = false;
+      captureBtn.title = '現在の映像を撮影';
       requestAnimationFrame(render);
     }
   }catch(err){
@@ -335,6 +357,43 @@ async function startCamera(){
 }
 
 startBtn.addEventListener('click', startCamera);
+
+captureBtn.addEventListener('click', ()=>{
+  if(!gl){
+    statusEl.textContent = '撮影できる映像がありません';
+    return;
+  }
+  gl.finish();
+
+  const now = new Date();
+  const timestamp = [
+    now.getFullYear(),
+    String(now.getMonth()+1).padStart(2,'0'),
+    String(now.getDate()).padStart(2,'0')
+  ].join('') + '_' + [
+    String(now.getHours()).padStart(2,'0'),
+    String(now.getMinutes()).padStart(2,'0')
+  ].join('');
+  const modeNames = ['通常','1型(P)','2型(D)','3型(T)'];
+  const filename = `simulation_${modeNames[currentMode]}_${timestamp}.png`;
+
+  canvas.toBlob(blob=>{
+    if(!blob){
+      statusEl.textContent = '画像を保存できませんでした';
+      console.error('Canvas PNG capture returned no image.');
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  }, 'image/png');
+});
 
 document.querySelectorAll('button.mode').forEach(btn=>{
   btn.addEventListener('click', ()=>{
@@ -417,6 +476,8 @@ function startGame(){
   startWrap.style.display='none'; stage.style.display='block';
   controls.style.display='none'; severityWrap.style.display='none';
   if(!gl && !initGL()) return;
+  captureBtn.disabled = false;
+  captureBtn.title = '現在の映像を撮影';
   severity=1.0; currentMode=0; score=[0,0,0]; round=-1; phase='intro';
   statusEl.textContent='的あてゲーム';
   gameActive=true; lastT=performance.now();
