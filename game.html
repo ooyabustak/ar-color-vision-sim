@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>色覚シミュレーション AR検証</title>
+<style>
+/* 【担当:UI/UXデザイン(メンバーB)】
+   見た目・配置・配色はこのstyleタグの中で調整。変数(--bg, --accent など)で全体の配色が変わります。 */
+:root{
+  --bg:#0f1115; --surface:#1b1e26; --text:#f2f3f5; --sub:#9aa0ab;
+  --accent:#4f8cff; --accent-text:#ffffff; --border:#2a2e38;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f5f6f8; --surface:#ffffff; --text:#1a1c21; --sub:#5b6270;
+    --accent:#2f6fed; --accent-text:#ffffff; --border:#e1e3e8;
+    color-scheme: light;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --surface:#1b1e26; --text:#f2f3f5; --sub:#9aa0ab;
+  --accent:#4f8cff; --accent-text:#ffffff; --border:#2a2e38;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  display:flex; flex-direction:column; align-items:center;
+}
+header{width:100%; max-width:480px; padding:14px 16px; text-align:center;}
+h1{font-size:15px; font-weight:600; margin:0 0 2px;}
+p.sub{font-size:12px; color:var(--sub); margin:0;}
+.stage{
+  position:relative; width:100%; max-width:480px; aspect-ratio:3/4;
+  background:#000; overflow:hidden; border-radius:12px;
+}
+video{display:none;}
+canvas{width:100%; height:100%; display:block; object-fit:cover;}
+.status{
+  position:absolute; top:8px; left:8px; right:8px;
+  font-size:12px; color:#fff; background:rgba(0,0,0,.45);
+  padding:6px 10px; border-radius:8px; text-align:center; pointer-events:none;
+}
+/* [追加:ゲーム] 左下のゲーム切り替えボタン */
+.gamebar{position:absolute; left:8px; bottom:8px; display:flex; gap:6px; align-items:center; z-index:2;}
+.gamebar select,.gamebar button{
+  padding:8px 10px; font-size:12px; border-radius:10px; cursor:pointer;
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+}
+.gamebar button{background:var(--accent); color:var(--accent-text); border-color:var(--accent);}
+.controls{
+  width:100%; max-width:480px; padding:14px 16px;
+  display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+}
+button.mode{
+  padding:10px 4px; font-size:12px; border-radius:10px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  cursor:pointer;
+}
+button.mode.active{background:var(--accent); color:var(--accent-text); border-color:var(--accent);}
+.severity-wrap{
+  width:100%; max-width:480px; padding:8px 16px 6px;
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+.severity-wrap label{font-size:14px; color:var(--sub); white-space:nowrap;}
+.severity-wrap .val{
+  font-size:20px; font-weight:700; color:var(--text);
+  width:64px; text-align:right; font-variant-numeric:tabular-nums;
+}
+/* スライダー本体:タップ領域を高さ48pxに拡大 */
+.severity-wrap input[type="range"]{
+  flex:1; min-width:0; height:48px; margin:0;
+  -webkit-appearance:none; appearance:none; background:transparent;
+  touch-action:pan-y;
+}
+.severity-wrap input[type="range"]::-webkit-slider-runnable-track{height:14px; border-radius:7px; background:var(--border);}
+.severity-wrap input[type="range"]::-moz-range-track{height:14px; border-radius:7px; background:var(--border);}
+.severity-wrap input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:44px; height:44px; margin-top:-15px;
+  border-radius:50%; background:var(--accent);
+  border:4px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
+.severity-wrap input[type="range"]::-moz-range-thumb{
+  width:44px; height:44px; border-radius:50%; background:var(--accent);
+  border:4px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
+/* プリセットボタン */
+.presets{width:100%; display:grid; grid-template-columns:repeat(5,1fr); gap:8px;}
+button.preset{
+  padding:12px 0; font-size:14px; border-radius:10px;
+  border:1px solid var(--border); background:var(--surface);
+  color:var(--text); cursor:pointer;
+}
+button.preset:active{background:var(--accent); color:var(--accent-text);}
+.start-wrap{padding:16px;}
+#startBtn{
+  padding:12px 24px; font-size:14px; border-radius:10px; border:none;
+  background:var(--accent); color:var(--accent-text); cursor:pointer;
+}
+footer{padding:10px 16px 20px; font-size:11px; color:var(--sub); text-align:center; max-width:480px;}
+</style>
+</head>
+<body>
+
+<!-- 【担当:UI/UXデザイン(メンバーB)】画面の各パーツ -->
+
+<header>
+  <h1>色覚シミュレーション AR検証(PoC)</h1>
+  <p class="sub">カメラ映像にリアルタイムで色覚変換をかける技術検証</p>
+</header>
+
+<div class="start-wrap" id="startWrap">
+  <button id="startBtn">カメラを起動する</button>
+</div>
+
+<div class="stage" id="stage" style="display:none;">
+  <video id="video" playsinline autoplay muted></video>
+  <canvas id="glcanvas"></canvas>
+  <div class="status" id="status">通常の見え方</div>
+  <!-- [追加:ゲーム] 左下:的あてゲームの開始/カメラに戻る -->
+  <div class="gamebar">
+    <select id="gameType" aria-label="ゲームで体験する見え方">
+      <option value="2">2型(D)</option>
+      <option value="1">1型(P)</option>
+      <option value="3">3型(T)</option>
+    </select>
+    <button id="gameBtn">🎯 ゲームで遊ぶ</button>
+  </div>
+</div>
+
+<div class="controls" id="controls" style="display:none;">
+  <button class="mode active" data-mode="0">通常</button>
+  <button class="mode" data-mode="1">1型(P)</button>
+  <button class="mode" data-mode="2">2型(D)</button>
+  <button class="mode" data-mode="3">3型(T)</button>
+</div>
+
+<div class="severity-wrap" id="severityWrap" style="display:none;">
+  <label for="severitySlider">度合い</label>
+  <input type="range" id="severitySlider" min="0" max="100" value="100">
+  <span class="val" id="severityVal">100%</span>
+</div>
+
+<footer>
+  ※ Machado, Oliveira, Fonseca (2009)の手法に基づく近似シミュレーションです。実際の見え方を完全に再現するものではありません。
+</footer>
+
+<!-- 【担当:データ・検証機能(メンバーC)】
+     体験後のアンケートボタンなどは、ここ(footerの下)に追加 -->
+
+<script>
+/* 担当エリアマップ
+   - MATRICES / シェーダー / render() → 【シミュレーションエンジン】
+   - startCamera()内の画面切り替え、モード切り替えボタン → 【UI/UX(メンバーB)】と要相談
+   - 的あてゲーム等の新規関数 → 【データ・検証機能(メンバーC)】ファイル一番下 */
+
+const startBtn = document.getElementById('startBtn');
+const startWrap = document.getElementById('startWrap');
+const stage = document.getElementById('stage');
+const controls = document.getElementById('controls');
+const statusEl = document.getElementById('status');
+const video = document.getElementById('video');
+const canvas = document.getElementById('glcanvas');
+
+let gl, program, texture, currentMode = 0;
+let severity = 1.0; // 0.0(通常)〜1.0(完全な2色覚)
+const severityWrap = document.getElementById('severityWrap');
+const severitySlider = document.getElementById('severitySlider');
+const severityVal = document.getElementById('severityVal');
+const modeLabels = ['通常の見え方','1型(P型)として見た場合','2型(D型)として見た場合','3型(T型)として見た場合'];
+
+// ============================================
+// 【担当:シミュレーションエンジン】ここからrender()まで
+// ============================================
+// Machado, Oliveira, Fonseca (2009)の行列(リニアRGB空間に適用)
+// ※WebGLは列優先のため、数値は列ごとに並べ替えてあります
+const MATRICES = [
+  [1,0,0, 0,1,0, 0,0,1],
+  [0.152286,0.114503,-0.003882, 1.052583,0.786281,-0.048116, -0.204868,0.099216,1.051998], // 1型
+  [0.367322,0.280085,-0.011820, 0.860646,0.672501,0.042940, -0.227968,0.047413,0.968881],  // 2型
+  [1.255528,-0.078411,0.004733, -0.076749,0.930809,0.691367, -0.178779,0.147602,0.303900]  // 3型
+];
+const IDENTITY = [1,0,0, 0,1,0, 0,0,1];
+
+// severity:単位行列と完全2色覚行列の線形補間(Machado論文の方式)
+function lerpMatrix(matA, matB, t){
+  const out = new Array(9);
+  for(let i=0;i<9;i++){ out[i] = matA[i] + (matB[i]-matA[i]) * t; }
+  return out;
+}
+function getMatrixForMode(mode, severity){
+  if(mode === 0) return IDENTITY;
+  return lerpMatrix(IDENTITY, MATRICES[mode], severity);
+}
+
+const vsSource = `
+  attribute vec2 a_pos;
+  attribute vec2 a_uv;
+  varying vec2 v_uv;
+  void main(){
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+    v_uv = a_uv;
+  }
+`;
+const fsSource = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform sampler2D u_tex;
+  uniform mat3 u_mat;
+
+  // sRGB → リニアRGB
+  vec3 srgbToLinear(vec3 c){
+    vec3 lo = c / 12.92;
+    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
+    bvec3 cutoff = lessThanEqual(c, vec3(0.04045));
+    return mix(hi, lo, vec3(cutoff));
+  }
+  // リニアRGB → sRGB(範囲外はこの後でclamp)
+  vec3 linearToSrgb(vec3 c){
+    vec3 lo = c * 12.92;
+    vec3 hi = 1.055 * pow(max(c, 0.0), vec3(1.0/2.4)) - 0.055;
+    bvec3 cutoff = lessThanEqual(c, vec3(0.0031308));
+    return mix(hi, lo, vec3(cutoff));
+  }
+  // [変更] 旧softClipは1超えの値ほど暗くなる問題があったため、単純なclampに変更
+  vec3 softClip(vec3 c){ return clamp(c, 0.0, 1.0); }
+
+  void main(){
+    vec4 c = texture2D(u_tex, v_uv);
+    vec3 linear = srgbToLinear(c.rgb);
+    vec3 transformedLinear = u_mat * linear;
+    vec3 srgbResult = linearToSrgb(transformedLinear);
+    gl_FragColor = vec4(softClip(srgbResult), c.a);
+  }
+`;
+
+function compileShader(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    console.error(gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+
+function initGL(){
+  gl = canvas.getContext('webgl', {antialias:false}) || canvas.getContext('experimental-webgl');
+  if(!gl){ statusEl.textContent = 'このブラウザはWebGLに対応していません'; return false; }
+
+  const vs = compileShader(gl.VERTEX_SHADER, vsSource);
+  const fs = compileShader(gl.FRAGMENT_SHADER, fsSource);
+  program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  gl.useProgram(program);
+
+  const verts = new Float32Array([
+    -1,-1, 0,1,
+     1,-1, 1,1,
+    -1, 1, 0,0,
+     1, 1, 1,0,
+  ]);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+
+  const aPos = gl.getAttribLocation(program, 'a_pos');
+  const aUv = gl.getAttribLocation(program, 'a_uv');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(aUv);
+  gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
+
+  texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  return true;
+}
+
+function render(){
+  // [変更:ゲーム] ゲーム中は2Dキャンバス、それ以外はカメラ映像を入力にする
+  if(gameActive) gameTick();
+  const src = gameActive ? gameCanvas : video;
+  if(gameActive || video.readyState >= video.HAVE_CURRENT_DATA){
+    const w = canvas.width = canvas.clientWidth * (window.devicePixelRatio||1);
+    const h = canvas.height = canvas.clientHeight * (window.devicePixelRatio||1);
+    gl.viewport(0,0,w,h);
+
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+
+    const matLoc = gl.getUniformLocation(program, 'u_mat');
+    gl.uniformMatrix3fv(matLoc, false, new Float32Array(getMatrixForMode(currentMode, severity)));
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  requestAnimationFrame(render);
+}
+// 【担当:シミュレーションエンジン】ここまで
+
+// ============================================
+// 【担当:UI/UXデザイン(メンバーB)】画面遷移・ボタン操作
+// ============================================
+async function startCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    startWrap.style.display = 'none';
+    stage.style.display = 'block';
+    controls.style.display = 'grid';
+
+    if(initGL()){
+      requestAnimationFrame(render);
+    }
+  }catch(err){
+    statusEl.textContent = 'カメラを起動できませんでした: ' + err.message;
+    stage.style.display = 'block';
+  }
+}
+
+startBtn.addEventListener('click', startCamera);
+
+document.querySelectorAll('button.mode').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('button.mode').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMode = parseInt(btn.dataset.mode,10);
+    statusEl.textContent = modeLabels[currentMode];
+    severityWrap.style.display = (currentMode === 0) ? 'none' : 'flex';
+  });
+});
+
+severitySlider.addEventListener('input', ()=>{
+  const percent = parseInt(severitySlider.value, 10);
+  severity = percent / 100;
+  severityVal.textContent = percent + '%';
+});
+
+// ============================================
+// 【担当:データ・検証機能(メンバーC)】ここより下に追加
+// ============================================
+
+// ===== 的あてゲーム(メンバーC) =====
+const GW=480, GH=640, ROUND_SEC=20, N=9, RAD=34;
+const gameCanvas=document.createElement('canvas');
+gameCanvas.width=GW; gameCanvas.height=GH;
+const g=gameCanvas.getContext('2d');
+const gameBtn=document.getElementById('gameBtn');
+const gameType=document.getElementById('gameType');
+// [的の色, はずれの色]。3型は青系が混ざりやすい組(実機で要確認)
+const PAIRS={1:['#d92b2b','#3f9e3f'],2:['#d92b2b','#3f9e3f'],3:['#1f6bff','#10a58a']};
+let gameActive=false, simMode=2, round=-1, phase='intro';
+let score=[0,0,0], tLeft=0, dots=[], lastT=0;
+const tname=()=> simMode===3 ? '青' : '赤';
+
+let mv=2; // 2秒ごと(とタップ直後)に全部の的を動かす
+// 左下ボタンと重ならないよう、下側に余白を取る
+const randPos=()=>({x:RAD+Math.random()*(GW-2*RAD), y:110+Math.random()*(GH-110-RAD-70)});
+function scatter(){ mv=2; dots.forEach(d=>{ const p=randPos(); d.tx=p.x; d.ty=p.y; }); }
+function newDot(){
+  const p=randPos();
+  return {x:p.x, y:p.y, tx:p.x, ty:p.y, t:Math.random()<0.5};
+}
+// 画面に「あたり」「はずれ」を常に2個以上残す
+function fillDot(i){
+  const o=dots.filter((_,k)=>k!==i), a=o.filter(d=>d.t).length, b=o.length-a, d=newDot();
+  if(a<2) d.t=true; else if(b<2) d.t=false;
+  return d;
+}
+function drawDot(d){
+  g.fillStyle=d.t?PAIRS[simMode][0]:PAIRS[simMode][1];
+  if(round===2 && !d.t){ // 改善版:はずれは「四角+縞模様」
+    const x=d.x-RAD, y=d.y-RAD, s=RAD*2;
+    g.fillRect(x,y,s,s);
+    g.save(); g.beginPath(); g.rect(x,y,s,s); g.clip();
+    g.strokeStyle='#fff'; g.lineWidth=5;
+    for(let k=-s;k<s;k+=14){ g.beginPath(); g.moveTo(x+k,y+s); g.lineTo(x+k+s,y); g.stroke(); }
+    g.restore();
+  }else{
+    g.beginPath(); g.arc(d.x,d.y,RAD,0,Math.PI*2); g.fill();
+  }
+}
+function txt(s,x,y,size){
+  g.fillStyle='#fff'; g.font='bold '+size+'px sans-serif';
+  g.textAlign='center'; g.fillText(s,x,y);
+}
+function lines(arr,y0,size,gap){ arr.forEach((s,i)=>txt(s,GW/2,y0+i*gap,size)); }
+
+function setRound(r){
+  round=r; phase='ready';
+  if(r===3){ currentMode=0; phase='result'; statusEl.textContent='結果'; return; }
+  currentMode=[0,simMode,simMode][r];
+  statusEl.textContent=['ラウンド1:通常の見え方','ラウンド2:'+modeLabels[simMode],'ラウンド3:改善版('+modeLabels[simMode]+')'][r];
+}
+function startPlay(){
+  dots=[]; for(let i=0;i<N;i++) dots.push(fillDot(-1)); tLeft=ROUND_SEC; mv=2; phase='play';
+}
+function startGame(){
+  simMode=parseInt(gameType.value,10);
+  const needLoop=!gl; // カメラ未起動でGLが無い場合だけ描画ループを開始する
+  startWrap.style.display='none'; stage.style.display='block';
+  controls.style.display='none'; severityWrap.style.display='none';
+  if(!gl && !initGL()) return;
+  severity=1.0; currentMode=0; score=[0,0,0]; round=-1; phase='intro';
+  statusEl.textContent='的あてゲーム';
+  gameActive=true; lastT=performance.now();
+  canvas.style.touchAction='none';
+  gameType.style.display='none';
+  gameBtn.textContent='📷 カメラに戻る';
+  if(needLoop) requestAnimationFrame(render);
+}
+function exitGame(){
+  gameActive=false;
+  canvas.style.touchAction='';
+  gameType.style.display='';
+  gameBtn.textContent='🎯 ゲームで遊ぶ';
+  const act=document.querySelector('button.mode.active');
+  currentMode=parseInt(act.dataset.mode,10);
+  severity=parseInt(severitySlider.value,10)/100;
+  statusEl.textContent=video.srcObject ? modeLabels[currentMode] : 'カメラ未起動';
+  if(video.srcObject){
+    controls.style.display='grid';
+    severityWrap.style.display=(currentMode===0)?'none':'flex';
+  }
+}
+
+function gameTick(){
+  const now=performance.now(), dt=(now-lastT)/1000; lastT=now;
+  if(phase==='play'){
+    tLeft-=dt;
+    if(tLeft<=0) setRound(round+1);
+    mv-=dt;
+    if(mv<=0) scatter();
+    dots.forEach(d=>{ const k=Math.min(1,dt*5); d.x+=(d.tx-d.x)*k; d.y+=(d.ty-d.y)*k; });
+  }
+  drawGame();
+}
+function drawGame(){
+  g.fillStyle='#222'; g.fillRect(0,0,GW,GH);
+  if(phase==='intro'){
+    txt('的あてゲーム',GW/2,170,40);
+    lines(['色の見え方で、ゲームの','むずかしさはどう変わる?','','3ラウンドで体験します','','(画面をタップして開始)'],260,22,36);
+  }else if(phase==='ready'){
+    txt('ラウンド'+(round+1),GW/2,130,38);
+    lines([['ふつうの見え方です','同じ見え方のままプレイ'],
+           ['同じゲームを','別の見え方で'],
+           ['色はそのまま','形と模様を足しました']][round].concat([tname()+'い丸だけタップ!']),200,22,36);
+    drawDot({x:160,y:420,t:true}); drawDot({x:320,y:420,t:false});
+    txt('あたり',160,490,20); txt('はずれ',320,490,20);
+    txt('(画面をタップして開始)',GW/2,550,20);
+  }else if(phase==='play'){
+    txt('ラウンド'+(round+1)+'   残り'+Math.ceil(tLeft)+'秒   '+score[round]+'点',GW/2,45,26);
+    txt(tname()+'い丸だけタップ',GW/2,85,20);
+    dots.forEach(drawDot);
+  }else{ // result
+    txt('けっか',GW/2,110,38);
+    lines(['①通常:'+score[0]+'点','②見え方を変えた:'+score[1]+'点','③形と模様を足した:'+score[2]+'点'],200,26,44);
+    lines(['色だけだと、見分けにくい人がいます。','形や模様を足すと伝わります。','','※近似であり、見え方は人によって違います','(タップでもう一度)'],370,20,34);
+  }
+}
+
+canvas.addEventListener('pointerdown',e=>{
+  if(!gameActive) return;
+  if(phase==='intro'){ setRound(0); return; }
+  if(phase==='ready'){ startPlay(); return; }
+  if(phase==='result'){ score=[0,0,0]; round=-1; phase='intro'; currentMode=0; statusEl.textContent='的あてゲーム'; return; }
+  const r=canvas.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width*GW, y=(e.clientY-r.top)/r.height*GH;
+  for(let i=dots.length-1;i>=0;i--){
+    const d=dots[i];
+    if(Math.hypot(x-d.x,y-d.y)<RAD+6){
+      score[round]=Math.max(0,score[round]+(d.t?1:-1));
+      dots[i]=fillDot(i); scatter(); break;
+    }
+  }
+});
+gameBtn.addEventListener('click',()=>{ gameActive ? exitGame() : startGame(); });
+</script>
+</body>
+</html>
